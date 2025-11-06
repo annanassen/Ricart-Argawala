@@ -1,0 +1,22 @@
+syntax = "proto3";
+option go_package = "ITU/grpc/proto";
+
+message req{
+    string juice = 1;
+    string siteName = 2; // Sitename
+    int64 timestamp = 3; // Logical time
+}
+
+message reply{
+    // Can be empty
+}
+
+service messageServer{
+    rpc sendMessage (req) returns (stream reply){}; //Server-Side Streaming
+}
+
+// Requesting site: Client
+// Receiving site: Server
+
+//protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative proto.proto
+//noob
