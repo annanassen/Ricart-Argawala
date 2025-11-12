@@ -2,8 +2,7 @@ syntax = "proto3";
 option go_package = "ITU/grpc/proto";
 
 message req{
-    string juice = 1;
-    string siteName = 2; // Sitename
+    string NodeID = 2; // Sitename
     int64 timestamp = 3; // Logical time
 }
 
@@ -12,7 +11,7 @@ message reply{
 }
 
 service messageServer{
-    rpc sendMessage (req) returns (stream reply){}; //Server-Side Streaming
+    rpc sendMessage (req) returns (reply){}; //Server-Side Streaming
 }
 
 // Requesting site: Client
