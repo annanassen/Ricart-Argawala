@@ -2,6 +2,7 @@ package main
 
 import (
 	proto "ITU/grpc"
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -22,10 +23,34 @@ type activeNode struct {
 	ID          string
 	portAddress string
 	sisterNodes []activeNode
+	letMeIn     bool
+	timestamp   int64
+	theDMs      map[string]bool
 }
 
-func (s *messageServer_WOMEN_IN_STEM) sendMessage(proto.MessageServerServer) {
+func (s *messageServer_WOMEN_IN_STEM) sendMessage(ctx context.Context, r *proto.Req) (*proto.Reply, error) {
+	s.mu.Lock()   // Avoids race conditions
+	s.mu.Unlock() // Will unlock on exit
 
+	s.updateDaClock(r.Timestamp)
+
+	if r.Timestamp >= 0 { // 0 is a request
+		fmt.Printf("[Node] Received request from %s with the timestamp %d\n", r.NodeID, r.Timestamp)
+
+	} else {
+
+	}
+
+	if r.Timestamp == -1 { // -1 is a reply
+
+		//r.NodeID
+	}
+
+	if r.Timestamp == -2 { // -2 is a release
+
+	}
+
+	return &proto.Reply{}, nil
 }
 
 func main() {
@@ -107,5 +132,16 @@ func start_servers(activeNode activeNode, MS *messageServer_WOMEN_IN_STEM) {
 	err = node.Serve(listener)
 	if err != nil {
 		log.Fatalf("Did not serve")
+	}
+}
+
+func (s *messageServer_WOMEN_IN_STEM) updateDaClock(time int64) { // Adds 1 to the logical time
+	s.mu.Lock()         // Avoid race conditions
+	defer s.mu.Unlock() // Runs unlock when the function is done
+
+	if time > s.clock {
+		s.clock = time + 1
+	} else {
+		s.clock++
 	}
 }
