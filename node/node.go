@@ -2,10 +2,12 @@ package main
 
 import (
 	proto "ITU/grpc"
+	"bufio"
 	"context"
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"sync"
 
 	"google.golang.org/grpc"
@@ -14,134 +16,161 @@ import (
 
 type messageServer_WOMEN_IN_STEM struct {
 	proto.UnimplementedMessageServerServer
-	mu    sync.RWMutex //mutex prevents race conditions
-	nodes []activeNode //(pizza)slice that keeps track of the clients on the server
-	clock int64        //logical clock (lamport)
+	mu           sync.RWMutex //mutex prevents race conditions
+	portAddress  string
+	nodes        map[string]*grpc.ClientConn
+	critical     bool
+	requesting   bool
+	timestamp    int64
+	reqTimestamp int64
+	theDMs       []string
+	replies      int
 }
 
-type activeNode struct {
-	ID          string
-	portAddress string
-	sisterNodes []activeNode
-	letMeIn     bool
-	timestamp   int64
-	theDMs      map[string]bool
+func (serve *messageServer_WOMEN_IN_STEM) SendRequest(ctx context.Context, req *proto.Req) (*proto.Empty, error) {
+	log.Printf("Fcuk")
+
+	serve.mu.Lock()
+	myTS := serve.reqTimestamp
+	theirTS := req.Timestamp
+	serve.timestamp = max(serve.timestamp, req.Timestamp)
+	serve.mu.Unlock()
+	if serve.critical || (serve.requesting && myTS <= theirTS) {
+		log.Printf("Deferring %s access to critical section (%d<%d)\n", req.Port, myTS, theirTS)
+		serve.theDMs = append(serve.theDMs, req.Port)
+		return &proto.Empty{}, nil
+	}
+
+	c := proto.NewMessageServerClient(serve.nodes[req.Port])
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	serve.mu.Lock()
+	serve.timestamp++
+	c.SendResponse(ctx, &proto.Resp{Timestamp: serve.timestamp, Port: serve.portAddress})
+	serve.mu.Unlock()
+	log.Printf("Allowing %s access to critical section\n", req.Port)
+	return &proto.Empty{}, nil
 }
 
-func (s *messageServer_WOMEN_IN_STEM) sendMessage(ctx context.Context, r *proto.Req) (*proto.Reply, error) {
-	s.mu.Lock()   // Avoids race conditions
-	s.mu.Unlock() // Will unlock on exit
-
-	s.updateDaClock(r.Timestamp)
-
-	if r.Timestamp >= 0 { // 0 is a request
-		fmt.Printf("[Node] Received request from %s with the timestamp %d\n", r.NodeID, r.Timestamp)
-
-	} else {
-
-	}
-
-	if r.Timestamp == -1 { // -1 is a reply
-
-		//r.NodeID
-	}
-
-	if r.Timestamp == -2 { // -2 is a release
-
-	}
-
-	return &proto.Reply{}, nil
+func (serve *messageServer_WOMEN_IN_STEM) SendReply(ctx context.Context, resp *proto.Resp) (*proto.Empty, error) {
+	serve.mu.Lock()     
+	defer serve.mu.Unlock() 
+	return &proto.Empty{}, nil
 }
 
 func main() {
-
-	nodeA := activeNode{
-		ID:          "A",
-		portAddress: "5000",
-	}
-	nodeB := activeNode{
-		ID:          "B",
-		portAddress: "5001",
-	}
-	nodeC := activeNode{
-		ID:          "C",
-		portAddress: "5002",
-	}
-	nodeA.sisterNodes = append(nodeA.sisterNodes, nodeB, nodeC)
-	nodeB.sisterNodes = append(nodeB.sisterNodes, nodeA, nodeC)
-	nodeC.sisterNodes = append(nodeC.sisterNodes, nodeA, nodeB)
-
-	MS1 := messageServer_WOMEN_IN_STEM{
-		nodes: make([]activeNode, 0),
-		clock: 0,
-	}
-
-	MS2 := messageServer_WOMEN_IN_STEM{
-		nodes: make([]activeNode, 0),
-		clock: 0,
-	}
-
-	MS3 := messageServer_WOMEN_IN_STEM{
-		nodes: make([]activeNode, 0),
-		clock: 0,
-	}
-
-	MS1.nodes = append(MS1.nodes, nodeB, nodeC)
-	MS2.nodes = append(MS2.nodes, nodeA, nodeC)
-	MS3.nodes = append(MS3.nodes, nodeA, nodeB)
-
-	go start_servers(nodeA, &MS1)
-	go start_servers(nodeB, &MS2)
-	go start_servers(nodeC, &MS3)
-
-	connectAnode(nodeA)
-	connectAnode(nodeB)
-	connectAnode(nodeC)
-
+	start_server()
 }
 
-func connectAnode(node activeNode) {
+func (serve *messageServer_WOMEN_IN_STEM) get_available_listener() net.Listener {
+	// Private port range
+	var ports []string
+	ports = append(ports, ":50000")
+	ports = append(ports, ":50001")
+	ports = append(ports, ":50002")
 
-	for _, sisterNode := range node.sisterNodes {
-		conn, err := grpc.NewClient("localhost:"+sisterNode.portAddress, grpc.WithTransportCredentials(insecure.NewCredentials())) // I want to make a connection pls
-		if err != nil {                                                                                                            // If an error occurs:
-			log.Fatalf("Not working")
+	var ret net.Listener
+
+	for _, port := range ports {
+		if ret == nil{
+			listener, err := net.Listen("tcp", port)
+			if err == nil {
+				log.Println("Got port", port)
+				ret = listener
+				continue
+			}
 		}
-
-		fmt.Println("Node", node.ID, "is connected to node", sisterNode.ID, "on port", sisterNode.portAddress)
-
-		client := proto.NewMessageServerClient(conn) // Creates a client object
-		// Knows how to send and receive messages now.
-		fmt.Println(client, "YAYY")
+		
+		serve.nodes[port] = nil
+	}
+	if ret == nil {
+		log.Fatalf("Could not eat") 
 	}
 
+	return ret
 }
 
-func start_servers(activeNode activeNode, MS *messageServer_WOMEN_IN_STEM) {
-	fmt.Println("Node", activeNode.ID, "started server on port", activeNode.portAddress)
+func (serve *messageServer_WOMEN_IN_STEM) request() {
+	if serve.critical {
+		log.Printf("Already has access to critical section")
+		return
+	} else if serve.requesting {
+		log.Printf("Already requesting access to critical section")
+		return
+	}
+	serve.mu.Lock()
+	serve.timestamp++
+	serve.reqTimestamp = serve.timestamp
+	serve.mu.Unlock()
+	go func() { // Func to defer cancel()
+		for port, conn := range serve.nodes {
+			c := proto.NewMessageServerClient(conn)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			log.Println("Requesting access to critical section from", port)
+			go c.SendRequest(ctx, &proto.Req{Timestamp: serve.reqTimestamp, Port: serve.portAddress})
+		}
+	}()
+
+	requiredReplies := 2
+	for {
+		if requiredReplies == serve.replies {
+			break
+		}
+	}
+
+	log.Printf("Gained access to critical section")
+}
+func (serve *messageServer_WOMEN_IN_STEM) connect_nodes() {
+	for port, _ := range serve.nodes {
+		conn, err := grpc.NewClient(port, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			log.Fatalf("Failed to slay")
+		}
+		serve.nodes[port] = conn
+	}
+}
+
+func start_server() {
 	node := grpc.NewServer()
+	serve := &messageServer_WOMEN_IN_STEM{
+		nodes: make(map[string]*grpc.ClientConn),
+	}
+	listener := serve.get_available_listener()
 
-	listener, err := net.Listen("tcp", ":"+activeNode.portAddress)
-	if err != nil {
-		log.Fatalf("Did not work")
+	serve.portAddress = listener.Addr().String()[len(listener.Addr().String())-6:] // port number
+
+	proto.RegisterMessageServerServer(node, serve)
+
+	go func() {
+		if err := node.Serve(listener); err != nil {
+			log.Fatalf("Failed to gatekeep")
+		}
+	}()
+
+	fmt.Println("Once all nodes have been started type MS")
+	sc := bufio.NewScanner(os.Stdin)
+	for sc.Scan() {
+		if sc.Text() == "MS" {
+			serve.connect_nodes()
+			break
+		}
 	}
 
-	designatedNode := MS
-	proto.RegisterMessageServerServer(node, designatedNode)
-
-	err = node.Serve(listener)
-	if err != nil {
-		log.Fatalf("Did not serve")
-	}
-}
-
-func (s *messageServer_WOMEN_IN_STEM) updateDaClock(time int64) { // Adds 1 to the logical time
-	s.mu.Lock()         // Avoid race conditions
-	defer s.mu.Unlock() // Runs unlock when the function is done
-
-	if time > s.clock {
-		s.clock = time + 1
-	} else {
-		s.clock++
+	fmt.Println("type:")
+	fmt.Println("    enter: enter the critical section")
+	fmt.Println("    leave: leave the critical section")
+	for sc.Scan() {
+		action := sc.Text()
+		switch action {
+		case "enter":
+			{
+				go serve.request()
+			}
+		case "leave":
+			{
+				// TODO: leave
+			}
+		}
 	}
 }

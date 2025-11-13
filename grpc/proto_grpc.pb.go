@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v6.32.1
-// source: proto.proto
+// source: grpc/proto.proto
 
 package proto
 
@@ -19,14 +19,16 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	MessageServer_SendMessage_FullMethodName = "/messageServer/sendMessage"
+	MessageServer_SendRequest_FullMethodName  = "/messageServer/SendRequest"
+	MessageServer_SendResponse_FullMethodName = "/messageServer/SendResponse"
 )
 
 // MessageServerClient is the client API for MessageServer service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type MessageServerClient interface {
-	SendMessage(ctx context.Context, in *Req, opts ...grpc.CallOption) (*Reply, error)
+	SendRequest(ctx context.Context, in *Req, opts ...grpc.CallOption) (*Empty, error)
+	SendResponse(ctx context.Context, in *Resp, opts ...grpc.CallOption) (*Empty, error)
 }
 
 type messageServerClient struct {
@@ -37,10 +39,20 @@ func NewMessageServerClient(cc grpc.ClientConnInterface) MessageServerClient {
 	return &messageServerClient{cc}
 }
 
-func (c *messageServerClient) SendMessage(ctx context.Context, in *Req, opts ...grpc.CallOption) (*Reply, error) {
+func (c *messageServerClient) SendRequest(ctx context.Context, in *Req, opts ...grpc.CallOption) (*Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Reply)
-	err := c.cc.Invoke(ctx, MessageServer_SendMessage_FullMethodName, in, out, cOpts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, MessageServer_SendRequest_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *messageServerClient) SendResponse(ctx context.Context, in *Resp, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, MessageServer_SendResponse_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +63,8 @@ func (c *messageServerClient) SendMessage(ctx context.Context, in *Req, opts ...
 // All implementations must embed UnimplementedMessageServerServer
 // for forward compatibility.
 type MessageServerServer interface {
-	SendMessage(context.Context, *Req) (*Reply, error)
+	SendRequest(context.Context, *Req) (*Empty, error)
+	SendResponse(context.Context, *Resp) (*Empty, error)
 	mustEmbedUnimplementedMessageServerServer()
 }
 
@@ -62,8 +75,11 @@ type MessageServerServer interface {
 // pointer dereference when methods are called.
 type UnimplementedMessageServerServer struct{}
 
-func (UnimplementedMessageServerServer) SendMessage(context.Context, *Req) (*Reply, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SendMessage not implemented")
+func (UnimplementedMessageServerServer) SendRequest(context.Context, *Req) (*Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendRequest not implemented")
+}
+func (UnimplementedMessageServerServer) SendResponse(context.Context, *Resp) (*Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendResponse not implemented")
 }
 func (UnimplementedMessageServerServer) mustEmbedUnimplementedMessageServerServer() {}
 func (UnimplementedMessageServerServer) testEmbeddedByValue()                       {}
@@ -86,20 +102,38 @@ func RegisterMessageServerServer(s grpc.ServiceRegistrar, srv MessageServerServe
 	s.RegisterService(&MessageServer_ServiceDesc, srv)
 }
 
-func _MessageServer_SendMessage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _MessageServer_SendRequest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(Req)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(MessageServerServer).SendMessage(ctx, in)
+		return srv.(MessageServerServer).SendRequest(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: MessageServer_SendMessage_FullMethodName,
+		FullMethod: MessageServer_SendRequest_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MessageServerServer).SendMessage(ctx, req.(*Req))
+		return srv.(MessageServerServer).SendRequest(ctx, req.(*Req))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MessageServer_SendResponse_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Resp)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MessageServerServer).SendResponse(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MessageServer_SendResponse_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MessageServerServer).SendResponse(ctx, req.(*Resp))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -112,10 +146,14 @@ var MessageServer_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*MessageServerServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "sendMessage",
-			Handler:    _MessageServer_SendMessage_Handler,
+			MethodName: "SendRequest",
+			Handler:    _MessageServer_SendRequest_Handler,
+		},
+		{
+			MethodName: "SendResponse",
+			Handler:    _MessageServer_SendResponse_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "proto.proto",
+	Metadata: "grpc/proto.proto",
 }

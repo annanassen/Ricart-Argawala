@@ -1,17 +1,21 @@
 syntax = "proto3";
 option go_package = "ITU/grpc/proto";
 
-message req{
-    string NodeID = 2; // Sitename
-    int64 timestamp = 3; // Logical time
+message Req{
+    string port = 1; // Sitename
+    int64 timestamp = 2; // Logical time
 }
 
-message reply{
-    // Can be empty
+message Resp{
+    string port = 1; // Sitename
+    int64 timestamp = 2; // Logical time
 }
+
+message Empty {}
 
 service messageServer{
-    rpc sendMessage (req) returns (reply){}; //Server-Side Streaming
+    rpc SendRequest (Req) returns (Empty){}; // Node-side streaming
+    rpc SendResponse (Resp) returns (Empty){};
 }
 
 // Requesting site: Client
