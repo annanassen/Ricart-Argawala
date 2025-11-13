@@ -1,4 +1,4 @@
-To start our system open three seperate terminals and call "go run node.go"
+To start our system open three separate terminals and call "go run node.go"
 When all three terminals are open write "MS" in each of the three terminals.
 
 Now you are ready to enter or exit the critical section.
